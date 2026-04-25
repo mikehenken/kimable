@@ -18,67 +18,86 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: install pyyaml
+        run: pip install pyyaml
+
       - name: validate agent.yaml files
         run: |
-          # check every agent.yaml has the required keys
-          for f in $(find . -name 'agent.yaml' -not -path './.github/*'); do
-            echo "checking $f"
-            python3 -c "
-          import yaml, sys
-          with open('$f') as fh:
-              data = yaml.safe_load(fh)
-          required = ['version', 'name', 'description', 'tools']
-          missing = [k for k in required if k not in data]
-          if missing:
-              print(f'missing keys in $f: {missing}')
+          python3 << 'PYEOF'
+          import yaml, sys, os
+
+          failed = False
+          for root, dirs, files in os.walk('.'):
+              # skip .github
+              if root.startswith('./.github'):
+                  continue
+              for f in files:
+                  if f != 'agent.yaml':
+                      continue
+                  path = os.path.join(root, f)
+                  try:
+                      with open(path) as fh:
+                          data = yaml.safe_load(fh)
+                  except Exception as e:
+                      print(f'FAIL: {path} - yaml parse error: {e}')
+                      failed = True
+                      continue
+
+                  required = ['version', 'name', 'description', 'tools']
+                  missing = [k for k in required if k not in data]
+                  if missing:
+                      print(f'FAIL: {path} - missing keys: {missing}')
+                      failed = True
+                  else:
+                      print(f'OK:  {path} -> {data["name"]}')
+
+          if failed:
               sys.exit(1)
-          " || exit 1
-          done
-          echo "all agent.yaml files look good"
+          print('all agent.yaml files valid')
+          PYEOF
 
       - name: validate kimable.yaml
         run: |
-          python3 -c "
+          python3 << 'PYEOF'
           import yaml, sys
+
           with open('kimable.yaml') as fh:
               data = yaml.safe_load(fh)
-          agents = data.get('agents', {})
-          if len(agents) != 14:
-              print(f'expected 14 subagents, got {len(agents)}')
+
+          subagents = data.get('subagents', [])
+          if len(subagents) != 14:
+              print(f'expected 14 subagents, got {len(subagents)}')
               sys.exit(1)
-          print(f'found {len(agents)} subagents — nice')
-          "
+          print(f'found {len(subagents)} subagents')
+          PYEOF
 
       - name: check subagent file structure
         run: |
-          # every subagent needs agent.yaml + system.md
-          # no exceptions, not even for that one folder you forgot about
-          for d in */; do
-            # skip root-level non-agent dirs
-            if [[ "$d" == ".github/" ]] || [[ "$d" == "scripts/" ]]; then
-              continue
-            fi
-            if [[ ! -f "${d}agent.yaml" ]]; then
-              echo "missing ${d}agent.yaml"
-              exit 1
-            fi
-            if [[ ! -f "${d}system.md" ]]; then
-              echo "missing ${d}system.md"
-              exit 1
-            fi
-          done
-          echo "all subagent dirs have their files"
+          python3 << 'PYEOF'
+          import os, sys
+
+          failed = False
+          for name in sorted(os.listdir('subagents')):
+              d = os.path.join('subagents', name)
+              if not os.path.isdir(d):
+                  continue
+              if not os.path.isfile(os.path.join(d, 'agent.yaml')):
+                  print(f'missing: {d}/agent.yaml')
+                  failed = True
+              if not os.path.isfile(os.path.join(d, 'system.md')):
+                  print(f'missing: {d}/system.md')
+                  failed = True
+
+          if failed:
+              sys.exit(1)
+          print('all subagent dirs have their files')
+          PYEOF
 
       - name: basic lint
         run: |
-          # shellcheck-style but with just bash -n because we're keeping it simple
-          for f in scripts/*.sh scripts/*.py; do
+          for f in claude-integration/*.sh; do
             [[ -f "$f" ]] || continue
-            if [[ "$f" == *.sh ]]; then
-              bash -n "$f" || exit 1
-            fi
-            if [[ "$f" == *.py ]]; then
-              python3 -m py_compile "$f" || exit 1
-            fi
+            bash -n "$f" || exit 1
+            echo "OK: $f"
           done
           echo "lint passed"

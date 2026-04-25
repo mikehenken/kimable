@@ -1,0 +1,14 @@
+{
+  "name": "kimable",
+  "version": "1.0.0",
+  "description": "Claude agent for kimi delegation — install, test, and validate your pipeline",
+  "bin": {
+    "kimable": "./scripts/install.js",
+    "kimable-test": "./scripts/test.js"
+  },
+  "scripts": {
+    "test": "node scripts/test.js",
+    "install": "node scripts/install.js"
+  },
+  "license": "MIT"
+}

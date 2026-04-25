@@ -1,0 +1,30 @@
+{
+  "name": "kimable-delegate",
+  "version": "1.0.0",
+  "description": "Delegate non-architectural tasks from Claude Code to Kimi multi-agent orchestrator",
+  "author": "mikehenken",
+  "license": "MIT",
+  "repository": "https://github.com/mikehenken/kimable-simple-agent",
+  "homepage": "https://github.com/mikehenken/kimable-simple-agent",
+  "categories": ["agents", "productivity", "orchestration"],
+  "tags": ["kimi", "multi-agent", "delegation", "execution"],
+  "minClaudeVersion": "1.0.33",
+  "dependencies": {
+    "kimi-cli": ">=1.0.0"
+  },
+  "agents": [
+    {
+      "name": "kimi-delegate",
+      "description": "Routes execution tasks to Kimable's multi-agent orchestrator",
+      "file": "agents/kimi-delegate.md",
+      "autoInvoke": false
+    }
+  ],
+  "commands": [
+    {
+      "name": "delegate",
+      "description": "Quick-delegate current task to Kimable",
+      "file": "commands/delegate.md"
+    }
+  ]
+}
