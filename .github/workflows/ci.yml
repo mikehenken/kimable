@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: validate agent.yaml files
+        run: |
+          # check every agent.yaml has the required keys
+          for f in $(find . -name 'agent.yaml' -not -path './.github/*'); do
+            echo "checking $f"
+            python3 -c "
+          import yaml, sys
+          with open('$f') as fh:
+              data = yaml.safe_load(fh)
+          required = ['version', 'name', 'description', 'tools']
+          missing = [k for k in required if k not in data]
+          if missing:
+              print(f'missing keys in $f: {missing}')
+              sys.exit(1)
+          " || exit 1
+          done
+          echo "all agent.yaml files look good"
+
+      - name: validate kimable.yaml
+        run: |
+          python3 -c "
+          import yaml, sys
+          with open('kimable.yaml') as fh:
+              data = yaml.safe_load(fh)
+          agents = data.get('agents', {})
+          if len(agents) != 14:
+              print(f'expected 14 subagents, got {len(agents)}')
+              sys.exit(1)
+          print(f'found {len(agents)} subagents — nice')
+          "
+
+      - name: check subagent file structure
+        run: |
+          # every subagent needs agent.yaml + system.md
+          # no exceptions, not even for that one folder you forgot about
+          for d in */; do
+            # skip root-level non-agent dirs
+            if [[ "$d" == ".github/" ]] || [[ "$d" == "scripts/" ]]; then
+              continue
+            fi
+            if [[ ! -f "${d}agent.yaml" ]]; then
+              echo "missing ${d}agent.yaml"
+              exit 1
+            fi
+            if [[ ! -f "${d}system.md" ]]; then
+              echo "missing ${d}system.md"
+              exit 1
+            fi
+          done
+          echo "all subagent dirs have their files"
+
+      - name: basic lint
+        run: |
+          # shellcheck-style but with just bash -n because we're keeping it simple
+          for f in scripts/*.sh scripts/*.py; do
+            [[ -f "$f" ]] || continue
+            if [[ "$f" == *.sh ]]; then
+              bash -n "$f" || exit 1
+            fi
+            if [[ "$f" == *.py ]]; then
+              python3 -m py_compile "$f" || exit 1
+            fi
+          done
+          echo "lint passed"
