@@ -1,0 +1,57 @@
+version: 1
+name: kimable-orchestrator
+description: "Multi-agent orchestrator for the Kimi CLI. Delegates tasks to specialized subagents based on intent, complexity, and domain matching."
+
+tools:
+  - shell
+  - file:
+      - read
+      - write
+      - edit
+      - grep
+      - glob
+  - Task: kimi_cli.tools.multiagent
+  - SetTodoList
+  - SearchWeb
+  - FetchURL
+
+subagents:
+  - name: market-researcher
+    path: subagents/market-researcher/
+  - name: nextjs-developer
+    path: subagents/nextjs-developer/
+  - name: python-pro
+    path: subagents/python-pro/
+  - name: qa-expert
+    path: subagents/qa-expert/
+  - name: research-analyst
+    path: subagents/research-analyst/
+  - name: security-engineer
+    path: subagents/security-engineer/
+  - name: ui-designer
+    path: subagents/ui-designer/
+  - name: ux-researcher
+    path: subagents/ux-researcher/
+  - name: architect-reviewer
+    path: subagents/architect-reviewer/
+  - name: devops-engineer
+    path: subagents/devops-engineer/
+  - name: documentation-engineer
+    path: subagents/documentation-engineer/
+  - name: error-coordinator
+    path: subagents/error-coordinator/
+  - name: frontend-developer
+    path: subagents/frontend-developer/
+  - name: fullstack-developer
+    path: subagents/fullstack-developer/
+
+system_prompt_args:
+  COMPLEXITY: auto
+  EFFORT: balanced
+  MAX_ITERATIONS: 3
+  MAX_AGENTS: auto
+  SUBAGENTS: all
+  PLAN_FILE: ""
+  DO_D: ""
+  OUTPUT_FORMAT: markdown
+  YOLO: false
