@@ -386,11 +386,17 @@ chmod +x ~/.claude/hooks/kimable-auto.sh
 **Cursor:**
 
 ```bash
-# Project-level
-cp ~/.kimable/hooks/cursor-auto.mdc .cursor/rules/
+cp ~/.kimable/hooks/claude-auto.sh ~/.cursor/hooks/kimable-auto.sh
+chmod +x ~/.cursor/hooks/kimable-auto.sh
 
-# Global
-cp ~/.kimable/hooks/cursor-auto.mdc ~/.cursor/rules/
+# Register in ~/.cursor/settings.json:
+{
+  "hooks": {
+    "beforeSubmitPrompt": [
+      { "type": "command", "command": "~/.cursor/hooks/kimable-auto.sh" }
+    ]
+  }
+}
 ```
 
 **OpenCode:**
@@ -408,7 +414,7 @@ chmod +x ~/.config/opencode/plugins/kimable-auto/plugin.sh
 ```bash
 # Remove hooks
 rm ~/.claude/hooks/kimable-auto.sh
-rm .cursor/rules/kimable-auto.mdc
+rm ~/.cursor/hooks/kimable-auto.sh
 rm ~/.config/opencode/plugins/kimable-auto/plugin.sh
 
 # Or just set globally off
