@@ -44,6 +44,14 @@ kimi --agent kimable.yaml --prompt "your prompt here"
 
 The `--agent` flag loads the Kimable agent configuration. The `--prompt` is what Kimable actually works on. Kimable operates in the current working directory, so being at the repo root matters.
 
+**Run from the project root.** When you delegate, make sure kimi executes from the correct directory. The model knows where it is — just use that path.
+
+```bash
+cd <project-root> && kimi --agent ~/.kimable/kimable.yaml --prompt "add dark mode toggle"
+```
+
+Don't let kimi guess the directory. Tell it where to work.
+
 If your prompt has quotes inside it, use single quotes for the shell string or escape them. Kimable doesn't care, but your shell does.
 
 ---

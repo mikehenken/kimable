@@ -336,74 +336,83 @@ The flow is bidirectional. Claude designs. Kimable executes. Kimable escalates. 
 
 ## Auto-delegation
 
-By default, `@kimi-delegate` only runs when you type it. If you want Kimable to intercept implementation work automatically, install the auto-delegation hook for your tool.
+By default, `@kimi-delegate` only runs when you type it. Install the auto-delegation hook if you want Kimable to intercept implementation work automatically. The hook is installed by default but **disabled per-session** until you turn it on.
 
 ### How it works
 
-The hook watches every prompt before your tool processes it. If the prompt looks like implementation work (write code, add tests, refactor, etc.), it injects a system instruction to delegate to Kimable automatically. If the prompt is architecture or design, it passes through unchanged.
+The hook runs on every prompt before your tool processes it. It does two checks:
 
-### Claude Code (opt-in)
+1. **Is auto-delegation enabled?** Checks `KIMABLE_USE_HOOK=1` env var, or a session state file at `~/.kimable/session-state/{platform}-{session-id}.json`
+2. **Is this implementation work?** Checks if the prompt contains keywords like "write", "add test", "refactor", etc.
 
-Install the `UserPromptSubmit` hook:
+If both pass, it injects a system instruction telling the model to delegate to Kimable. The agent itself handles running from the correct project root.
+
+### Enable globally
 
 ```bash
-# 1. Copy the hook
+export KIMABLE_USE_HOOK=1
+```
+
+Put this in your `.bashrc`, `.zshrc`, or shell profile. Every session auto-delegates implementation work.
+
+### Enable per-session
+
+| Tool | Enable | Disable |
+|------|--------|---------|
+| **Claude Code** | `/delegate-on` | `/delegate-off` |
+| **Cursor** | `CMD+SHIFT+P` → "Enable Kimable auto-delegate" | `CMD+SHIFT+P` → "Disable Kimable auto-delegate" |
+| **OpenCode** | `!delegate-on` | `!delegate-off` |
+
+These commands write or delete the session state file. No global change.
+
+### Install the hooks
+
+**Claude Code:**
+
+```bash
 cp ~/.kimable/hooks/claude-auto.sh ~/.claude/hooks/kimable-auto.sh
 chmod +x ~/.claude/hooks/kimable-auto.sh
 
-# 2. Register it in Claude settings
-cat >> ~/.claude/settings.json << 'EOF'
+# Register in ~/.claude/settings.json:
 {
   "hooks": {
     "UserPromptSubmit": [
-      {
-        "type": "command",
-        "command": "~/.claude/hooks/kimable-auto.sh"
-      }
+      { "type": "command", "command": "~/.claude/hooks/kimable-auto.sh" }
     ]
   }
 }
-EOF
-
-# 3. Restart Claude Code
 ```
 
-This is true middleware. Every prompt gets checked. Implementation work gets routed. No user action required.
-
-### Cursor (opt-in)
-
-Drop the always-apply rule into your project or global rules:
+**Cursor:**
 
 ```bash
-# Project-level (only this project)
+# Project-level
 cp ~/.kimable/hooks/cursor-auto.mdc .cursor/rules/
 
-# Global (all projects)
+# Global
 cp ~/.kimable/hooks/cursor-auto.mdc ~/.cursor/rules/
 ```
 
-`alwaysApply: true` means Cursor loads this rule in every session. The model sees the delegation instruction automatically.
-
-### OpenCode (opt-in)
-
-Add to your OpenCode config:
+**OpenCode:**
 
 ```bash
-cp ~/.kimable/hooks/opencode.json ~/.config/opencode/opencode.json
-```
+cp ~/.kimable/hooks/opencode-auto.sh ~/.config/opencode/plugins/kimable-auto/plugin.sh
+chmod +x ~/.config/opencode/plugins/kimable-auto/plugin.sh
 
-OpenCode loads the instruction on every session start. Note: OpenCode does not have true hooks like Claude Code. This is an instruction injection, not middleware. The model decides whether to follow it.
+# Add to ~/.config/opencode/opencode.json:
+{ "plugin": ["kimable-auto"] }
+```
 
 ### Disable auto-delegation
 
 ```bash
-# Claude: remove the hook
+# Remove hooks
 rm ~/.claude/hooks/kimable-auto.sh
-
-# Cursor: remove the rule
 rm .cursor/rules/kimable-auto.mdc
+rm ~/.config/opencode/plugins/kimable-auto/plugin.sh
 
-# OpenCode: edit opencode.json and remove the instructions line
+# Or just set globally off
+export KIMABLE_USE_HOOK=0
 ```
 
 ## Observability

@@ -1,5 +1,5 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["kimable-auto"],
-  "instructions": "When asked for implementation work (code, tests, docs, refactoring, API research), delegate to Kimable automatically by running: kimi --agent ~/.kimable/kimable.yaml --prompt '<task>'. Do NOT delegate for architecture decisions or tradeoff analysis."
+  "instructions": "When asked for implementation work (code, tests, docs, refactoring, API research), delegate to Kimable by running from the project root: cd <project-root> && kimi --agent ~/.kimable/kimable.yaml --prompt '<task>'. Do NOT delegate for architecture decisions or tradeoff analysis."
 }

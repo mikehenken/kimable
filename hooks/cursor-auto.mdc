@@ -29,8 +29,20 @@ Auto-delegate when the user asks for:
 
 ## Delegation command
 
+Run from the project root:
+
 ```bash
-kimi --agent ~/.kimable/kimable.yaml --prompt "<task>"
+cd <project-root> && kimi --agent ~/.kimable/kimable.yaml --prompt "<task>"
+```
+
+## Session toggle
+
+This rule is always active (`alwaysApply: true`). To disable, remove the file:
+
+```bash
+rm .cursor/rules/kimable-auto.mdc
+# or if global:
+rm ~/.cursor/rules/kimable-auto.mdc
 ```
 
 ## What happens
