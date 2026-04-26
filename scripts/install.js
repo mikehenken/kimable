@@ -1,483 +1,359 @@
 #!/usr/bin/env node
 
-/**
- * Kimable Install Script
- *
- * Usage:
- *   Interactive:       npx github:mikehenken/kimable-simple-agent
- *   Non-interactive:   npx github:mikehenken/kimable-simple-agent --all
- *   Select specific:   npx github:mikehenken/kimable-simple-agent --claude --kimi
- *   Skip detection:    npx github:mikehenken/kimable-simple-agent --claude --claude-path ~/custom/.claude
- *
- * Options:
- *   -a, --all           Install everything for all detected platforms
- *   -y, --yes           Auto-confirm all prompts (implies --all for detected)
- *   --claude            Install Claude agent
- *   --cursor            Install Cursor agent
- *   --opencode          Install OpenCode agent
- *   --kimi              Install/update Kimable orchestrator
- *   --install-kimi-cli  Install Kimi CLI if missing
- *   --claude-path PATH  Custom Claude agents directory
- *   --cursor-path PATH  Custom Cursor agents directory
- *   --opencode-path PATH Custom OpenCode agents directory
- *   --kimable-path PATH Custom Kimable install directory
- *   --dry-run           Show what would be installed without doing it
- *   -h, --help          Show this message
- */
+// Kimable installer.
+//
+// Usage:
+//   npx github:mikehenken/kimable-simple-agent
+//   npx github:mikehenken/kimable-simple-agent --yes
+//   npx github:mikehenken/kimable-simple-agent --skip-kimi-cli
+//   npx github:mikehenken/kimable-simple-agent --update
+//
+// Flags:
+//   -y, --yes         Non-interactive; accept defaults.
+//   --skip-kimi-cli   Don't install the kimi CLI even if missing.
+//   --update          Pull latest into existing ~/.kimable.
+//   --dry-run         Print actions without performing them.
+//   -h, --help        Show this message.
+//
+// What it does:
+//   1. Verifies prerequisites (git, node).
+//   2. Installs the kimi CLI if missing (skipped on Windows; print manual steps).
+//   3. Clones (or updates) ~/.kimable so kimable.yaml + subagents are available locally.
+//   4. Prints next steps for installing the Claude Code plugin.
 
-const { execSync, spawn } = require('child_process');
+'use strict';
+
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
-const https = require('https');
 
-const REPO = 'https://github.com/mikehenken/kimable-simple-agent';
-const RAW = 'https://raw.githubusercontent.com/mikehenken/kimable-simple-agent/main';
-const DEFAULT_KIMABLE_DIR = path.join(os.homedir(), '.kimable');
+const REPO_URL = 'https://github.com/mikehenken/kimable-simple-agent.git';
 const KIMI_INSTALL_URL = 'https://www.kimi.com/code/install.sh';
+const KIMABLE_DIR = process.env.KIMABLE_HOME || path.join(os.homedir(), '.kimable');
 
-// Colors
-const C = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  cyan: '\x1b[36m',
-  white: '\x1b[37m',
-  bgGreen: '\x1b[42m',
-  bgRed: '\x1b[41m',
+const C = process.stdout.isTTY
+  ? {
+      reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
+      red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', cyan: '\x1b[36m',
+    }
+  : { reset: '', bold: '', dim: '', red: '', green: '', yellow: '', cyan: '' };
+
+// ─── tiny helpers ─────────────────────────────────────────────────────
+
+const args = process.argv.slice(2);
+const flags = {
+  yes:          args.includes('-y') || args.includes('--yes'),
+  skipKimiCli:  args.includes('--skip-kimi-cli'),
+  update:       args.includes('--update'),
+  dryRun:       args.includes('--dry-run'),
+  help:         args.includes('-h') || args.includes('--help'),
 };
 
-function log(label, msg, color = C.reset) {
-  console.log(`${color}${C.bold}[${label}]${C.reset} ${msg}`);
+function log(level, msg) {
+  const colors = { info: C.cyan, ok: C.green, warn: C.yellow, err: C.red, dim: C.dim };
+  const labels = { info: 'INFO', ok: 'OK', warn: 'WARN', err: 'ERR', dim: '...' };
+  console.log(`${colors[level]}${C.bold}[${labels[level]}]${C.reset} ${msg}`);
 }
 
 function section(title) {
-  console.log('');
-  console.log(`${C.cyan}${C.bold}═══ ${title} ═══${C.reset}`);
-  console.log('');
+  console.log(`\n${C.cyan}${C.bold}━━ ${title} ━━${C.reset}`);
 }
 
-function prompt(msg) {
-  return new Promise(resolve => {
+function which(cmd) {
+  const lookup = process.platform === 'win32' ? `where ${cmd}` : `command -v ${cmd}`;
+  try { execSync(lookup, { stdio: 'ignore' }); return true; }
+  catch { return false; }
+}
+
+function run(cmd, opts = {}) {
+  if (flags.dryRun) { log('dim', `would run: ${cmd}`); return ''; }
+  return execSync(cmd, { stdio: opts.silent ? 'pipe' : 'inherit', encoding: 'utf8' });
+}
+
+function ask(question, defaultYes = true) {
+  if (flags.yes) return defaultYes;
+  return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`${C.yellow}${C.bold}?${C.reset} ${msg} `, answer => {
+    const suffix = defaultYes ? ' [Y/n] ' : ' [y/N] ';
+    rl.question(`${C.yellow}?${C.reset} ${question}${suffix}`, (ans) => {
       rl.close();
-      resolve(answer.trim());
+      const a = ans.trim().toLowerCase();
+      if (a === '') resolve(defaultYes);
+      else resolve(a === 'y' || a === 'yes');
     });
   });
 }
 
-function download(url, dest) {
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
-    https.get(url, response => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`HTTP ${response.statusCode}: ${url}`));
-        return;
-      }
-      response.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
-    }).on('error', reject);
-  });
-}
+function showHelp() {
+  console.log(`
+${C.cyan}${C.bold}Kimable installer${C.reset}
 
-function exists(cmd) {
-  try { execSync(`which ${cmd}`, { stdio: 'ignore' }); return true; } catch { return false; }
-}
+  Installs the kimi CLI (if missing) and clones the Kimable orchestrator
+  to ~/.kimable so kimable.yaml and the 14 subagents are available locally.
 
-function isDir(p) {
-  try { return fs.statSync(p).isDirectory(); } catch { return false; }
-}
+${C.bold}Usage${C.reset}
+  npx github:mikehenken/kimable-simple-agent [flags]
 
-// ─── Platform Detection ───
+${C.bold}Flags${C.reset}
+  -y, --yes           Non-interactive; accept defaults.
+  --skip-kimi-cli     Skip the kimi CLI install step.
+  --update            Pull latest into an existing ~/.kimable instead of cloning.
+  --dry-run           Print actions without performing them.
+  -h, --help          Show this message.
 
-const PLATFORMS = {
-  claude: {
-    name: 'Claude Code',
-    detect: () => isDir(path.join(os.homedir(), '.claude')) || exists('claude'),
-    defaultAgentDir: () => path.join(os.homedir(), '.claude', 'agents'),
-    agentFile: 'agents/kimi-delegate.md',
-  },
-  cursor: {
-    name: 'Cursor',
-    detect: () => isDir(path.join(os.homedir(), '.cursor')) || exists('cursor'),
-    defaultAgentDir: () => {
-      // Cursor reads Claude agents if configured, but has its own too
-      const cursorDir = path.join(os.homedir(), '.cursor', 'agents');
-      const claudeDir = path.join(os.homedir(), '.claude', 'agents');
-      if (isDir(cursorDir)) return cursorDir;
-      if (isDir(claudeDir)) return claudeDir;
-      return cursorDir; // fallback to cursor's own
-    },
-    agentFile: 'agents/kimi-delegate.md',
-  },
-  opencode: {
-    name: 'OpenCode',
-    detect: () => isDir(path.join(os.homedir(), '.config', 'opencode')) || exists('opencode'),
-    defaultAgentDir: () => path.join(os.homedir(), '.config', 'opencode', 'agents'),
-    agentFile: 'agents/kimi-delegate.md',
-  },
-  kimi: {
-    name: 'Kimi CLI / Orchestrator',
-    detect: () => exists('kimi'),
-    defaultAgentDir: () => DEFAULT_KIMABLE_DIR,
-    agentFile: null, // orchestrator is different
-  },
-};
+${C.bold}Environment${C.reset}
+  KIMABLE_HOME        Override install location (default: ~/.kimable).
 
-// ─── Checkbox UI ───
-
-class CheckboxUI {
-  constructor(items) {
-    this.items = items; // [{ key, name, checked, detected, path }]
-    this.cursor = 0;
-  }
-
-  render() {
-    console.clear();
-    console.log(`${C.cyan}${C.bold}Kimable Installer${C.reset}`);
-    console.log(`${C.dim}Select platforms to install (spacebar to toggle, enter to confirm)${C.reset}`);
-    console.log('');
-    this.items.forEach((item, i) => {
-      const cursor = i === this.cursor ? `${C.yellow}>${C.reset}` : ' ';
-      const checked = item.checked ? `${C.green}[x]${C.reset}` : `${C.dim}[ ]${C.reset}`;
-      const detected = item.detected ? `${C.dim}(detected)${C.reset}` : `${C.yellow}(not detected)${C.reset}`;
-      const path = item.path ? `${C.dim}→ ${item.path}${C.reset}` : '';
-      console.log(`  ${cursor} ${checked} ${C.bold}${item.name}${C.reset} ${detected} ${path}`);
-    });
-    console.log('');
-    console.log(`${C.dim}  ↑↓ move  space toggle  enter confirm  q quit${C.reset}`);
-  }
-
-  async run() {
-    return new Promise(resolve => {
-      const stdin = process.stdin;
-      stdin.setRawMode(true);
-      stdin.resume();
-      stdin.setEncoding('utf8');
-
-      const onKey = (key) => {
-        if (key === 'q' || key === '\u0003') { // q or ctrl+c
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.removeListener('data', onKey);
-          resolve(null);
-          return;
-        }
-        if (key === '\r' || key === '\n') { // enter
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.removeListener('data', onKey);
-          resolve(this.items);
-          return;
-        }
-        if (key === ' ') { // spacebar toggle
-          this.items[this.cursor].checked = !this.items[this.cursor].checked;
-        }
-        if (key === '\u001b[A') { // up
-          this.cursor = (this.cursor - 1 + this.items.length) % this.items.length;
-        }
-        if (key === '\u001b[B') { // down
-          this.cursor = (this.cursor + 1) % this.items.length;
-        }
-        this.render();
-      };
-
-      stdin.on('data', onKey);
-      this.render();
-    });
-  }
-}
-
-// ─── Main ───
-
-async function main() {
-  const args = process.argv.slice(2);
-
-  // Parse flags
-  const flags = {
-    all: args.includes('-a') || args.includes('--all'),
-    yes: args.includes('-y') || args.includes('--yes'),
-    claude: args.includes('--claude'),
-    cursor: args.includes('--cursor'),
-    opencode: args.includes('--opencode'),
-    kimi: args.includes('--kimi'),
-    installKimiCli: args.includes('--install-kimi-cli'),
-    dryRun: args.includes('--dry-run'),
-    help: args.includes('-h') || args.includes('--help'),
-  };
-
-  // Parse path overrides
-  const getPath = (flag) => {
-    const idx = args.indexOf(flag);
-    return idx !== -1 && args[idx + 1] ? args[idx + 1] : null;
-  };
-  const customPaths = {
-    claude: getPath('--claude-path'),
-    cursor: getPath('--cursor-path'),
-    opencode: getPath('--opencode-path'),
-    kimi: getPath('--kimable-path'),
-  };
-
-  if (flags.help) {
-    console.log(`
-${C.cyan}${C.bold}Kimable Installer${C.reset}
-
-Install the Kimable multi-agent orchestrator and IDE agents.
-
-${C.bold}Interactive mode:${C.reset}
-  npx github:mikehenken/kimable-simple-agent
-
-${C.bold}Non-interactive:${C.reset}
-  npx github:mikehenken/kimable-simple-agent --all
-  npx github:mikehenken/kimable-simple-agent --claude --kimi
-  npx github:mikehenken/kimable-simple-agent --yes
-
-${C.bold}Options:${C.reset}
-  -a, --all            Install for all detected platforms
-  -y, --yes            Auto-confirm, skip prompts
-  --claude             Install Claude agent
-  --cursor             Install Cursor agent
-  --opencode           Install OpenCode agent
-  --kimi               Install Kimable orchestrator
-  --install-kimi-cli   Install Kimi CLI if missing
-  --claude-path PATH   Custom Claude agents directory
-  --cursor-path PATH   Custom Cursor agents directory
-  --opencode-path PATH Custom OpenCode agents directory
-  --kimable-path PATH  Custom Kimable install directory
-  --dry-run            Show what would be installed
-  -h, --help           Show this message
+${C.bold}After install${C.reset}
+  Add the plugin to Claude Code:
+    claude plugin marketplace add github:mikehenken/kimable-simple-agent
+    /plugin install kimable-delegate
 `);
-    process.exit(0);
+}
+
+// ─── steps ─────────────────────────────────────────────────────────────
+
+function checkPrereqs() {
+  section('Prerequisites');
+  const missing = [];
+  if (!which('git'))  missing.push('git');
+  if (!which('node')) missing.push('node');
+  if (missing.length) {
+    log('err', `Missing required tools: ${missing.join(', ')}. Install them and re-run.`);
+    process.exit(1);
   }
+  log('ok', 'git + node found');
+}
 
-  section('Platform Detection');
-
-  const detections = {};
-  for (const [key, cfg] of Object.entries(PLATFORMS)) {
-    const detected = cfg.detect();
-    const defaultPath = cfg.defaultAgentDir();
-    const customPath = customPaths[key];
-    const finalPath = customPath || defaultPath;
-    detections[key] = { detected, defaultPath, finalPath };
-    log(detected ? 'FOUND' : 'MISSING', `${cfg.name} → ${finalPath}`, detected ? C.green : C.yellow);
+async function installKimiCli() {
+  section('Kimi CLI');
+  if (which('kimi')) {
+    log('ok', 'kimi already installed');
+    return;
   }
-
-  // Build checkbox items
-  const items = Object.entries(PLATFORMS).map(([key, cfg]) => ({
-    key,
-    name: cfg.name,
-    checked: detections[key].detected,
-    detected: detections[key].detected,
-    path: detections[key].finalPath,
-  }));
-
-  let selected = [];
-
-  // Non-interactive mode
-  if (flags.all || flags.yes || flags.claude || flags.cursor || flags.opencode || flags.kimi) {
-    if (flags.all || flags.yes) {
-      selected = items.filter(i => i.detected);
-    } else {
-      selected = items.filter(i => {
-        if (i.key === 'claude' && flags.claude) return true;
-        if (i.key === 'cursor' && flags.cursor) return true;
-        if (i.key === 'opencode' && flags.opencode) return true;
-        if (i.key === 'kimi' && flags.kimi) return true;
-        return false;
-      });
-    }
-
-    // Auto-select kimi if any IDE agent selected and kimi not already in list
-    if (selected.length > 0 && !selected.find(i => i.key === 'kimi')) {
-      items.find(i => i.key === 'kimi').checked = true;
-      selected = items.filter(i => i.checked);
-    }
-  } else {
-    // Interactive mode
-    const result = await new CheckboxUI(items).run();
-    if (result === null) {
-      console.log('\nCancelled.');
-      process.exit(0);
-    }
-    selected = result.filter(i => i.checked);
+  if (flags.skipKimiCli) {
+    log('warn', 'kimi not found; --skip-kimi-cli set, continuing');
+    return;
   }
+  if (process.platform === 'win32') {
+    log('warn', 'kimi installer is bash-only. Install manually under WSL or via the kimi.com instructions.');
+    log('dim',  `See: ${KIMI_INSTALL_URL}`);
+    return;
+  }
+  if (!which('curl')) {
+    log('warn', 'curl not found; cannot auto-install kimi. Install kimi manually:');
+    log('dim',  `  curl -fsSL ${KIMI_INSTALL_URL} | bash`);
+    return;
+  }
+  const yes = await ask('kimi CLI not found. Install it now?', true);
+  if (!yes) { log('warn', 'Skipping kimi install. You can run the curl command later.'); return; }
 
-  if (selected.length === 0) {
-    log('ERROR', 'Nothing selected to install.', C.red);
+  try {
+    run(`curl -fsSL ${KIMI_INSTALL_URL} | bash`);
+    if (which('kimi')) log('ok', 'kimi installed');
+    else log('warn', 'Installer ran but `kimi` is not on PATH. Restart your shell or update PATH.');
+  } catch (e) {
+    log('err', `kimi install failed: ${e.message}`);
+    log('dim', `Manual install: curl -fsSL ${KIMI_INSTALL_URL} | bash`);
+  }
+}
+
+async function syncRepo() {
+  section('Orchestrator');
+  const exists = fs.existsSync(KIMABLE_DIR);
+  const isGitRepo = exists && fs.existsSync(path.join(KIMABLE_DIR, '.git'));
+
+  if (exists && !isGitRepo) {
+    log('err', `${KIMABLE_DIR} exists but is not a git checkout. Move or remove it and re-run.`);
     process.exit(1);
   }
 
-  // Check for kimi-cli install
-  const needsKimi = selected.find(i => i.key === 'kimi');
-  const hasKimi = detections.kimi.detected;
-  if (needsKimi && !hasKimi && !flags.installKimiCli && !flags.yes) {
-    const ans = await prompt('Kimi CLI not found. Install it now? [Y/n]');
-    if (ans === '' || ans.toLowerCase() === 'y') {
-      flags.installKimiCli = true;
-    }
-  }
-
-  if (flags.installKimiCli && !hasKimi) {
-    section('Installing Kimi CLI');
-    if (flags.dryRun) {
-      log('DRY', `Would run: curl -fsSL ${KIMI_INSTALL_URL} | bash`, C.yellow);
-    } else {
+  if (isGitRepo) {
+    if (flags.update || await ask(`Update existing checkout at ${KIMABLE_DIR}?`, true)) {
       try {
-        execSync(`curl -fsSL ${KIMI_INSTALL_URL} | bash`, { stdio: 'inherit' });
-        log('OK', 'Kimi CLI installed', C.green);
+        run(`git -C "${KIMABLE_DIR}" pull --ff-only`, { silent: false });
+        log('ok', `Updated ${KIMABLE_DIR}`);
       } catch (e) {
-        log('ERROR', `Kimi CLI install failed: ${e.message}`, C.red);
+        log('err', `git pull failed: ${e.message}`);
         process.exit(1);
       }
-    }
-  }
-
-  // Custom paths for undetected platforms
-  for (const item of selected) {
-    if (!item.detected && !customPaths[item.key] && !flags.yes) {
-      const cfg = PLATFORMS[item.key];
-      const ans = await prompt(`${cfg.name} not detected. Install to ${item.path}? [Y/n/custom-path]`);
-      if (ans.toLowerCase() === 'n') {
-        item.skip = true;
-      } else if (ans && ans !== 'y' && ans !== 'Y' && ans !== '') {
-        item.path = ans.replace(/^~/, os.homedir());
-      }
-    }
-  }
-
-  const toInstall = selected.filter(i => !i.skip);
-
-  // ─── Install ───
-  section('Installing');
-
-  for (const item of toInstall) {
-    const cfg = PLATFORMS[item.key];
-
-    if (item.key === 'kimi') {
-      // Orchestrator install
-      const dest = item.path;
-      if (flags.dryRun) {
-        log('DRY', `Would clone orchestrator to ${dest}`, C.yellow);
-        continue;
-      }
-
-      if (isDir(dest)) {
-        log('SKIP', `Orchestrator already at ${dest}`, C.yellow);
-      } else {
-        try {
-          execSync(`git clone --depth 1 ${REPO}.git ${dest}`, { stdio: 'pipe' });
-          // Clean up unnecessary files
-          const cleanFiles = ['.git', 'README.md', 'CHANGELOG.md', 'AGENTS.md', 'blog-post', 'examples', 'PACKAGING.md'];
-          for (const f of cleanFiles) {
-            const p = path.join(dest, f);
-            if (fs.existsSync(p)) {
-              fs.rmSync(p, { recursive: true, force: true });
-            }
-          }
-          log('OK', `Orchestrator → ${dest}`, C.green);
-        } catch (e) {
-          log('ERROR', `Clone failed: ${e.message}`, C.red);
-        }
-      }
     } else {
-      // Agent install
-      const agentDir = item.path;
-
-      if (flags.dryRun) {
-        log('DRY', `Would create ${agentDir} and download agent`, C.yellow);
-        continue;
-      }
-
-      if (!isDir(agentDir)) {
-        fs.mkdirSync(agentDir, { recursive: true });
-      }
-
-      const agentDest = path.join(agentDir, 'kimi-delegate.md');
-      try {
-        await download(`${RAW}/${cfg.agentFile}`, agentDest);
-        log('OK', `${cfg.name} agent → ${agentDest}`, C.green);
-      } catch (e) {
-        log('ERROR', `Download failed for ${cfg.name}: ${e.message}`, C.red);
-      }
+      log('dim', 'Leaving existing checkout untouched.');
     }
+    return;
   }
 
-  // ─── Validation ───
-  section('Validation');
-
-  const kimiPath = toInstall.find(i => i.key === 'kimi')?.path || DEFAULT_KIMABLE_DIR;
-  let allGood = true;
-
-  // Check kimi.yaml exists
-  if (fs.existsSync(path.join(kimiPath, 'kimable.yaml'))) {
-    log('PASS', 'kimable.yaml found', C.green);
-  } else {
-    log('FAIL', 'kimable.yaml missing', C.red);
-    allGood = false;
+  // Fresh clone
+  fs.mkdirSync(path.dirname(KIMABLE_DIR), { recursive: true });
+  try {
+    run(`git clone --depth 1 ${REPO_URL} "${KIMABLE_DIR}"`);
+    log('ok', `Cloned to ${KIMABLE_DIR}`);
+  } catch (e) {
+    log('err', `git clone failed: ${e.message}`);
+    process.exit(1);
   }
-
-  // Check orchestrator system.md
-  if (fs.existsSync(path.join(kimiPath, 'orchestrator', 'system.md'))) {
-    log('PASS', 'orchestrator/system.md found', C.green);
-  } else {
-    log('FAIL', 'orchestrator/system.md missing', C.red);
-    allGood = false;
-  }
-
-  // Check subagents count
-  const subagentsDir = path.join(kimiPath, 'subagents');
-  if (isDir(subagentsDir)) {
-    const count = fs.readdirSync(subagentsDir).filter(d => fs.statSync(path.join(subagentsDir, d)).isDirectory()).length;
-    log('PASS', `${count} subagents found`, C.green);
-  } else {
-    log('FAIL', 'subagents/ directory missing', C.red);
-    allGood = false;
-  }
-
-  // Check agent files for selected platforms
-  for (const item of toInstall.filter(i => i.key !== 'kimi')) {
-    const agentFile = path.join(item.path, 'kimi-delegate.md');
-    if (fs.existsSync(agentFile)) {
-      log('PASS', `${PLATFORMS[item.key].name} agent installed`, C.green);
-    } else {
-      log('FAIL', `${PLATFORMS[item.key].name} agent missing`, C.red);
-      allGood = false;
-    }
-  }
-
-  // ─── Summary ───
-  section('Summary');
-
-  if (allGood) {
-    console.log(`${C.green}${C.bold}All checks passed. Kimable is ready.${C.reset}`);
-  } else {
-    console.log(`${C.yellow}${C.bold}Some checks failed. Review errors above.${C.reset}`);
-  }
-
-  console.log('');
-  console.log(`${C.dim}Quick start:${C.reset}`);
-  if (toInstall.find(i => i.key === 'claude')) {
-    console.log(`  ${C.dim}Claude Code: @kimi-delegate write tests for auth${C.reset}`);
-  }
-  if (toInstall.find(i => i.key === 'cursor')) {
-    console.log(`  ${C.dim}Cursor: CMD+SHIFT+P → "Delegate to Kimable"${C.reset}`);
-  }
-  if (toInstall.find(i => i.key === 'opencode')) {
-    console.log(`  ${C.dim}OpenCode: !delegate write tests for auth${C.reset}`);
-  }
-  if (toInstall.find(i => i.key === 'kimi')) {
-    console.log(`  ${C.dim}Kimi CLI: kimi --agent ${kimiPath}/kimable.yaml --prompt "task"${C.reset}`);
-  }
-  console.log('');
 }
 
-main().catch(e => {
-  console.error(e);
+// ─── Claude Code wiring ────────────────────────────────────────────────
+
+const CLAUDE_DIR    = path.join(os.homedir(), '.claude');
+const CLAUDE_AGENTS = path.join(CLAUDE_DIR, 'agents');
+const CLAUDE_HOOKS  = path.join(CLAUDE_DIR, 'hooks');
+const CLAUDE_SETTINGS = path.join(CLAUDE_DIR, 'settings.json');
+const HOOK_TARGET   = path.join(CLAUDE_HOOKS, 'kimable-auto.sh');
+
+function claudeDetected() {
+  return fs.existsSync(CLAUDE_DIR) || which('claude');
+}
+
+function copyFile(src, dst) {
+  if (flags.dryRun) { log('dim', `would copy ${src} -> ${dst}`); return; }
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.copyFileSync(src, dst);
+}
+
+async function installClaudeAgents() {
+  const srcDir = path.join(KIMABLE_DIR, 'agents');
+  if (!fs.existsSync(srcDir)) { log('warn', 'agents/ missing in checkout; skipping'); return; }
+
+  const yes = await ask(`Install agents into ${CLAUDE_AGENTS}?`, true);
+  if (!yes) { log('dim', 'Skipped agent install.'); return; }
+
+  for (const name of fs.readdirSync(srcDir)) {
+    if (!name.endsWith('.md')) continue;
+    copyFile(path.join(srcDir, name), path.join(CLAUDE_AGENTS, name));
+    log('ok', `agent → ${path.join(CLAUDE_AGENTS, name)}`);
+  }
+}
+
+async function installClaudeHook() {
+  const src = path.join(KIMABLE_DIR, 'hooks', 'claude-auto.sh');
+  if (!fs.existsSync(src)) { log('warn', 'hooks/claude-auto.sh missing in checkout; skipping'); return; }
+
+  const yes = await ask('Install the optional context hook into Claude Code?', false);
+  if (!yes) { log('dim', 'Skipped hook install.'); return; }
+
+  copyFile(src, HOOK_TARGET);
+  if (!flags.dryRun) {
+    try { fs.chmodSync(HOOK_TARGET, 0o755); } catch (_) {}
+  }
+  log('ok', `hook → ${HOOK_TARGET}`);
+
+  // Register in settings.json (idempotent)
+  if (flags.dryRun) { log('dim', `would register hook in ${CLAUDE_SETTINGS}`); return; }
+
+  let settings = {};
+  if (fs.existsSync(CLAUDE_SETTINGS)) {
+    try { settings = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS, 'utf8')); }
+    catch (e) {
+      log('warn', `Could not parse ${CLAUDE_SETTINGS}; not modifying. Add manually:`);
+      log('dim',  `  { "hooks": { "UserPromptSubmit": [ { "type": "command", "command": "${HOOK_TARGET}" } ] } }`);
+      return;
+    }
+  }
+  settings.hooks = settings.hooks || {};
+  settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit || [];
+  const already = settings.hooks.UserPromptSubmit.some(
+    (h) => h && h.command && h.command.includes('kimable-auto.sh')
+  );
+  if (already) {
+    log('ok', 'hook already registered in settings.json');
+  } else {
+    settings.hooks.UserPromptSubmit.push({ type: 'command', command: HOOK_TARGET });
+    fs.writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2) + '\n');
+    log('ok', `registered hook in ${CLAUDE_SETTINGS}`);
+  }
+  log('dim', 'Enable per-session: /delegate-on   Disable: /delegate-off   Switch mode: /kimable-mode');
+  log('dim', 'Or globally: export KIMABLE_USE_HOOK=1');
+}
+
+async function setupClaude() {
+  section('Claude Code integration');
+  if (!claudeDetected()) {
+    log('warn', 'Claude Code not detected (~/.claude not found and `claude` not on PATH).');
+    log('dim',  'Skipping. Install Claude Code first, then re-run with --update.');
+    return;
+  }
+  log('ok', 'Claude Code detected');
+
+  console.log(`${C.dim}Recommended path: install as a Claude plugin instead — gets you slash commands too.${C.reset}`);
+  console.log(`${C.dim}  claude plugin marketplace add github:mikehenken/kimable-simple-agent${C.reset}`);
+  console.log(`${C.dim}  /plugin install kimable-delegate${C.reset}\n`);
+
+  await installClaudeAgents();
+  await installClaudeHook();
+}
+
+function verify() {
+  section('Verify');
+  if (flags.dryRun) { log('dim', 'skipped (dry run)'); return true; }
+
+  const required = [
+    'kimable.yaml',
+    'orchestrator/system.md',
+    '.claude-plugin/plugin.json',
+    'agents/kimi-delegate.md',
+    'agents/kimi-orchestrate.md',
+    'subagents',
+  ];
+  let ok = true;
+  for (const rel of required) {
+    const p = path.join(KIMABLE_DIR, rel);
+    if (fs.existsSync(p)) {
+      log('ok', rel);
+    } else {
+      log('err', `missing: ${rel}`);
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+function printNextSteps(ok) {
+  section('Next steps');
+  if (!ok) {
+    console.log(`${C.red}Install completed with errors. Fix the missing files above and re-run with --update.${C.reset}\n`);
+    return;
+  }
+
+  console.log(`${C.green}Kimable is installed at ${KIMABLE_DIR}.${C.reset}\n`);
+
+  console.log(`${C.bold}Try it${C.reset}:`);
+  console.log(`     ${C.dim}# in Claude Code${C.reset}`);
+  console.log(`     ${C.dim}@kimi-delegate "fix the off-by-one in paginate()"${C.reset}`);
+  console.log(`     ${C.dim}@kimi-orchestrate "@plan-file:plans/add-oauth.yaml"${C.reset}\n`);
+
+  console.log(`     ${C.dim}# or from any shell${C.reset}`);
+  console.log(`     ${C.dim}kimi --agent ${KIMABLE_DIR}/kimable.yaml --prompt "your task"${C.reset}\n`);
+
+  console.log(`${C.bold}Plugin install${C.reset} (gets you /delegate, /orchestrate, /kimable-mode):`);
+  console.log(`     ${C.dim}claude plugin marketplace add github:mikehenken/kimable-simple-agent${C.reset}`);
+  console.log(`     ${C.dim}/plugin install kimable-delegate${C.reset}\n`);
+
+  if (!which('kimi')) {
+    console.log(`${C.yellow}Note:${C.reset} kimi CLI not on PATH. Install it before using Kimable:`);
+    console.log(`     ${C.dim}curl -fsSL ${KIMI_INSTALL_URL} | bash${C.reset}\n`);
+  }
+}
+
+// ─── main ──────────────────────────────────────────────────────────────
+
+(async () => {
+  if (flags.help) { showHelp(); process.exit(0); }
+
+  console.log(`${C.cyan}${C.bold}Kimable installer${C.reset}${flags.dryRun ? `  ${C.yellow}(dry run)${C.reset}` : ''}`);
+
+  checkPrereqs();
+  await installKimiCli();
+  await syncRepo();
+  const ok = verify();
+  if (ok) await setupClaude();
+  printNextSteps(ok);
+
+  process.exit(ok ? 0 : 1);
+})().catch((e) => {
+  log('err', e.message);
   process.exit(1);
 });

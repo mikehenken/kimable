@@ -1,7 +1,7 @@
 {
   "name": "kimable-delegate",
-  "version": "1.0.0",
-  "description": "Delegate non-architectural tasks from Claude Code to Kimi multi-agent orchestrator",
+  "version": "1.1.0",
+  "description": "Delegate execution work from Claude Code to Kimi — passthrough or multi-agent orchestration.",
   "author": "mikehenken",
   "license": "MIT",
   "repository": "https://github.com/mikehenken/kimable-simple-agent",
@@ -15,16 +15,32 @@
   "agents": [
     {
       "name": "kimi-delegate",
-      "description": "Routes execution tasks to Kimable's multi-agent orchestrator",
+      "description": "Lightweight passthrough to the default kimi CLI. Default agent — fast, no orchestrator.",
       "file": "agents/kimi-delegate.md",
+      "autoInvoke": false
+    },
+    {
+      "name": "kimi-orchestrate",
+      "description": "Multi-agent orchestrator via kimable.yaml + 14 subagents. For larger or multi-step tasks.",
+      "file": "agents/kimi-orchestrate.md",
       "autoInvoke": false
     }
   ],
   "commands": [
     {
       "name": "delegate",
-      "description": "Quick-delegate current task to Kimable",
+      "description": "Hand the current task to @kimi-delegate (passthrough).",
       "file": "commands/delegate.md"
+    },
+    {
+      "name": "orchestrate",
+      "description": "Hand the current task to @kimi-orchestrate (multi-agent flow).",
+      "file": "commands/orchestrate.md"
+    },
+    {
+      "name": "kimable-mode",
+      "description": "Switch the active Kimable mode (delegate or orchestrate) for this session.",
+      "file": "commands/kimable-mode.md"
     }
   ]
 }
