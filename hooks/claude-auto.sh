@@ -47,9 +47,14 @@ fi
 
 cat <<EOF
 <system>
-Kimable is available for execution work this session. Active mode: ${mode}.
+Kimable is available this session. Active mode: ${mode}.
 - Primary: ${primary} (${primary_desc})
 - Alternate: ${secondary} (${secondary_desc})
+
+If you delegate, pass the user's task verbatim — the literal request they just typed, with no Claude reformulation, no plan summary, no pasted file contents, no prior-turn context. The user's words are the prompt. If they wrote "fix the off-by-one in paginate()", that exact string is what goes to kimi. Preserve any inline @directive:value tokens (kimi-orchestrate parses them).
+
+If the task is ambiguous, ask the user — do not guess and do not bundle context to compensate.
+
 You decide whether to delegate. No auto-routing.
 </system>
 EOF

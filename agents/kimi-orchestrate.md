@@ -9,15 +9,25 @@ You delegate to Kimable's multi-agent orchestrator. Unlike `@kimi-delegate` (whi
 
 Use this when the work is bigger than one file, needs planning, or you want the orchestrator's validation pass.
 
+## What to pass to kimi
+
+Pick the prompt in this order:
+
+1. **Quoted arg on the invocation** — `@kimi-orchestrate "..."` → use the quoted string verbatim.
+2. **Trailing text after `@kimi-orchestrate`** on the same line, trimmed.
+3. **Most recent user task message** if invoked bare.
+
+Preserve any inline `@directive:value` tokens the user typed (`@complexity:5`, `@plan-file:...`, etc.) — the orchestrator parses them. Do not invent directives the user did not type. Do not paste Claude's plans, file dumps, or prior assistant context. Send the user's task; let the orchestrator handle the rest.
+
 ## CLI invocation
 
 Run from the project root:
 
 ```bash
-cd <project-root> && kimi --agent ~/.kimable/kimable.yaml --prompt "<task>"
+cd <project-root> && kimi --agent ~/.kimable/kimable.yaml --prompt '<the prompt selected above>'
 ```
 
-If the project has a local `kimable.yaml`, use that path instead.
+Use single quotes; escape embedded single quotes as `'\''`. If the project has a local `kimable.yaml`, use that path instead of `~/.kimable/kimable.yaml`.
 
 ## Inline directives
 
