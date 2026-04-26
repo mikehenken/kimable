@@ -334,6 +334,78 @@ Reverse direction: when Kimable scores a task as high complexity or hits archite
 
 The flow is bidirectional. Claude designs. Kimable executes. Kimable escalates. Claude decides.
 
+## Auto-delegation
+
+By default, `@kimi-delegate` only runs when you type it. If you want Kimable to intercept implementation work automatically, install the auto-delegation hook for your tool.
+
+### How it works
+
+The hook watches every prompt before your tool processes it. If the prompt looks like implementation work (write code, add tests, refactor, etc.), it injects a system instruction to delegate to Kimable automatically. If the prompt is architecture or design, it passes through unchanged.
+
+### Claude Code (opt-in)
+
+Install the `UserPromptSubmit` hook:
+
+```bash
+# 1. Copy the hook
+cp ~/.kimable/hooks/claude-auto.sh ~/.claude/hooks/kimable-auto.sh
+chmod +x ~/.claude/hooks/kimable-auto.sh
+
+# 2. Register it in Claude settings
+cat >> ~/.claude/settings.json << 'EOF'
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "~/.claude/hooks/kimable-auto.sh"
+      }
+    ]
+  }
+}
+EOF
+
+# 3. Restart Claude Code
+```
+
+This is true middleware. Every prompt gets checked. Implementation work gets routed. No user action required.
+
+### Cursor (opt-in)
+
+Drop the always-apply rule into your project or global rules:
+
+```bash
+# Project-level (only this project)
+cp ~/.kimable/hooks/cursor-auto.mdc .cursor/rules/
+
+# Global (all projects)
+cp ~/.kimable/hooks/cursor-auto.mdc ~/.cursor/rules/
+```
+
+`alwaysApply: true` means Cursor loads this rule in every session. The model sees the delegation instruction automatically.
+
+### OpenCode (opt-in)
+
+Add to your OpenCode config:
+
+```bash
+cp ~/.kimable/hooks/opencode.json ~/.config/opencode/opencode.json
+```
+
+OpenCode loads the instruction on every session start. Note: OpenCode does not have true hooks like Claude Code. This is an instruction injection, not middleware. The model decides whether to follow it.
+
+### Disable auto-delegation
+
+```bash
+# Claude: remove the hook
+rm ~/.claude/hooks/kimable-auto.sh
+
+# Cursor: remove the rule
+rm .cursor/rules/kimable-auto.mdc
+
+# OpenCode: edit opencode.json and remove the instructions line
+```
+
 ## Observability
 
 Kimable keeps two logs so you can figure out what happened without re-running everything.
