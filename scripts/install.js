@@ -3,10 +3,10 @@
 // Kimable installer.
 //
 // Usage:
-//   npx github:mikehenken/kimable-simple-agent
-//   npx github:mikehenken/kimable-simple-agent --yes
-//   npx github:mikehenken/kimable-simple-agent --skip-kimi-cli
-//   npx github:mikehenken/kimable-simple-agent --update
+//   npx github:mikehenken/kimable
+//   npx github:mikehenken/kimable --yes
+//   npx github:mikehenken/kimable --skip-kimi-cli
+//   npx github:mikehenken/kimable --update
 //
 // Flags:
 //   -y, --yes         Non-interactive; accept defaults.
@@ -29,7 +29,7 @@ const path = require('path');
 const os = require('os');
 const readline = require('readline');
 
-const REPO_URL = 'https://github.com/mikehenken/kimable-simple-agent.git';
+const REPO_URL = 'https://github.com/mikehenken/kimable.git';
 const KIMI_INSTALL_URL = 'https://www.kimi.com/code/install.sh';
 const KIMABLE_DIR = process.env.KIMABLE_HOME || path.join(os.homedir(), '.kimable');
 
@@ -94,7 +94,7 @@ ${C.cyan}${C.bold}Kimable installer${C.reset}
   to ~/.kimable so kimable.yaml and the 14 subagents are available locally.
 
 ${C.bold}Usage${C.reset}
-  npx github:mikehenken/kimable-simple-agent [flags]
+  npx github:mikehenken/kimable [flags]
 
 ${C.bold}Flags${C.reset}
   -y, --yes           Non-interactive; accept defaults.
@@ -108,7 +108,7 @@ ${C.bold}Environment${C.reset}
 
 ${C.bold}After install${C.reset}
   Add the plugin to Claude Code:
-    claude plugin marketplace add github:mikehenken/kimable-simple-agent
+    claude plugin marketplace add github:mikehenken/kimable
     /plugin install kimable-delegate
 `);
 }
@@ -279,7 +279,7 @@ async function setupClaude() {
   log('ok', 'Claude Code detected');
 
   console.log(`${C.dim}Recommended path: install as a Claude plugin instead — gets you slash commands too.${C.reset}`);
-  console.log(`${C.dim}  claude plugin marketplace add github:mikehenken/kimable-simple-agent${C.reset}`);
+  console.log(`${C.dim}  claude plugin marketplace add github:mikehenken/kimable${C.reset}`);
   console.log(`${C.dim}  /plugin install kimable-delegate${C.reset}\n`);
 
   await installClaudeAgents();
@@ -329,7 +329,7 @@ function printNextSteps(ok) {
   console.log(`     ${C.dim}kimi --agent ${KIMABLE_DIR}/kimable.yaml --prompt "your task"${C.reset}\n`);
 
   console.log(`${C.bold}Plugin install${C.reset} (gets you /delegate, /orchestrate, /kimable-mode):`);
-  console.log(`     ${C.dim}claude plugin marketplace add github:mikehenken/kimable-simple-agent${C.reset}`);
+  console.log(`     ${C.dim}claude plugin marketplace add github:mikehenken/kimable${C.reset}`);
   console.log(`     ${C.dim}/plugin install kimable-delegate${C.reset}\n`);
 
   if (!which('kimi')) {

@@ -15,7 +15,7 @@ Opus is great at architecture, expensive at grunt work. Kimi K2.6 / kimi-code is
 Recommended — Claude Code plugin:
 
 ```bash
-claude plugin marketplace add github:mikehenken/kimable-simple-agent
+claude plugin marketplace add github:mikehenken/kimable
 # inside Claude Code:
 /plugin install kimable-delegate
 ```
@@ -23,7 +23,7 @@ claude plugin marketplace add github:mikehenken/kimable-simple-agent
 Or via npx (clones to `~/.kimable` and offers to install the kimi CLI):
 
 ```bash
-npx github:mikehenken/kimable-simple-agent
+npx github:mikehenken/kimable
 ```
 
 Requires `git`, `node`, and the [kimi CLI](https://www.kimi.com/code).
