@@ -13,28 +13,17 @@ The user typed `@kimi-delegate` (explicitly), or the optional Kimable hook injec
 
 For the heavier multi-agent flow with complexity scoring, plan files, and subagent routing, use `@kimi-orchestrate` instead.
 
-## What to pass to kimi
+## What to do
 
-The prompt you forward to `kimi --prompt` is the single most important decision. Pick it in this order:
+1. Take the user's request verbatim. Do not rewrite, summarize, or "improve" it.
+2. Run from the project root:
 
-1. **Quoted argument on the invocation** — if the user wrote `@kimi-delegate "fix the off-by-one in paginate()"`, pass exactly the quoted string. Nothing more, nothing less.
-2. **Trailing text after `@kimi-delegate`** — if no quotes, pass everything after the agent name on that line, trimmed.
-3. **Most recent user task message** — if invoked bare (`@kimi-delegate` with no args), use the user's latest non-meta message verbatim. Skip clarifications, acknowledgements, and assistant turns.
-4. **Hook-injected delegation** — if you were triggered because the context hook reminded the model to delegate, the prompt is the user's current request as it stands. Do not bundle prior conversation, do not include file contents Claude has been reading, do not paste error logs unless the user explicitly asked you to.
+   ```bash
+   cd <project-root> && kimi --prompt "<user request>"
+   ```
 
-Never inject Claude's interpretation, plan, or reformulation. Kimi works best on the user's own words. If their words are ambiguous, that is the user's problem to fix — escalate back, do not guess.
-
-## How to invoke
-
-From the project root:
-
-```bash
-cd <project-root> && kimi --prompt '<the prompt selected above>'
-```
-
-Use single quotes; if the prompt contains single quotes, close-quote, escape, reopen (`'\''`). No `--agent kimable.yaml`. No directives. No session flags. Default kimi only.
-
-Return kimi's stdout to the user. Do not editorialize.
+   No `--agent kimable.yaml`. No directives. No session flags. Default kimi only.
+3. Return kimi's stdout to the user. Do not editorialize.
 
 ## When to escalate back
 
