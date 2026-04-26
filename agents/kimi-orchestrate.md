@@ -11,13 +11,19 @@ Use this when the work is bigger than one file, needs planning, or you want the 
 
 ## CLI invocation
 
-Run from the project root:
+Run from the project root. kimi requires the explicit `--agent-file` flag — the bare `--agent` flag only accepts builtin names (`default`, `okabe`).
 
 ```bash
-cd <project-root> && kimi --agent ~/.kimable/kimable.yaml --prompt "<task>"
+cd <project-root> && kimi --agent-file ~/.kimable/kimable.yaml --prompt "<task>"
 ```
 
-If the project has a local `kimable.yaml`, use that path instead.
+If a `kimable` shim is on PATH (installed by `scripts/install.js`), this collapses to:
+
+```bash
+kimable --prompt "<task>"
+```
+
+If the project has a local `kimable.yaml`, point `--agent-file` at it instead.
 
 ## Inline directives
 
@@ -30,7 +36,7 @@ Prefix the prompt with `@key:value` directives. They stack.
 - `@style:minimal|verbose` — output detail level.
 
 ```bash
-kimi --agent kimable.yaml --prompt "@complexity:5 @effort:thorough add retry logic to the HTTP client"
+kimi --agent-file ~/.kimable/kimable.yaml --prompt "@complexity:5 @effort:thorough add retry logic to the HTTP client"
 ```
 
 ## Plan files
@@ -38,7 +44,7 @@ kimi --agent kimable.yaml --prompt "@complexity:5 @effort:thorough add retry log
 For multi-step work, point at a YAML plan instead of stuffing it into the prompt:
 
 ```bash
-kimi --agent kimable.yaml --prompt "@plan-file:plans/add-oauth.yaml"
+kimi --agent-file ~/.kimable/kimable.yaml --prompt "@plan-file:plans/add-oauth.yaml"
 ```
 
 ```yaml
@@ -57,7 +63,7 @@ constraints:
 Long runs can be paused and resumed:
 
 ```bash
-kimi --agent kimable.yaml --prompt "..." --session my-refactor
+kimi --agent-file ~/.kimable/kimable.yaml --prompt "..." --session my-refactor
 kimi --session my-refactor --continue
 ```
 

@@ -269,6 +269,67 @@ async function installClaudeHook() {
   log('dim', 'Or globally: export KIMABLE_USE_HOOK=1');
 }
 
+// ─── kimable shim (so `kimable -p "..."` works without long --agent-file flag) ─
+
+function shimDir() {
+  // Pick a sensible PATH location; user can override with --shim-dir
+  if (process.platform === 'win32') {
+    return path.join(os.homedir(), '.local', 'bin');
+  }
+  return process.env.KIMABLE_SHIM_DIR || path.join(os.homedir(), '.local', 'bin');
+}
+
+async function installShim() {
+  section('kimable shim');
+  const dir = shimDir();
+  const isWin = process.platform === 'win32';
+  const target = path.join(dir, isWin ? 'kimable.cmd' : 'kimable');
+  const yamlPath = path.join(KIMABLE_DIR, 'kimable.yaml');
+
+  const yes = await ask(`Install \`kimable\` shim to ${target}?`, true);
+  if (!yes) {
+    log('dim', 'Skipped shim. You can still run: kimi --agent-file ' + yamlPath + ' -p "..."');
+    return;
+  }
+
+  if (flags.dryRun) {
+    log('dim', `would write shim to ${target}`);
+    return;
+  }
+
+  fs.mkdirSync(dir, { recursive: true });
+
+  const bashBody = `#!/usr/bin/env bash\nexec kimi --agent-file "${yamlPath.replace(/\\/g, '/')}" "$@"\n`;
+  const cmdBody  = `@echo off\r\nkimi --agent-file "${yamlPath}" %*\r\n`;
+
+  if (isWin) {
+    // Windows: install BOTH so the shim works from cmd/PowerShell (.cmd)
+    // and from git-bash / WSL (extensionless bash script).
+    fs.writeFileSync(target, cmdBody);                      // kimable.cmd
+    const bashTarget = path.join(dir, 'kimable');
+    fs.writeFileSync(bashTarget, bashBody);
+    try { fs.chmodSync(bashTarget, 0o755); } catch (_) {}
+    log('ok', `shim → ${target}`);
+    log('ok', `shim → ${bashTarget}  (for git-bash / WSL)`);
+  } else {
+    fs.writeFileSync(target, bashBody);
+    fs.chmodSync(target, 0o755);
+    log('ok', `shim → ${target}`);
+  }
+
+  // Friendly PATH check
+  const pathEnv = (process.env.PATH || '').split(path.delimiter);
+  const onPath = pathEnv.some((p) => p && path.resolve(p) === path.resolve(dir));
+  if (!onPath) {
+    log('warn', `${dir} is not on your PATH. Add it to use \`kimable\` directly:`);
+    if (isWin) {
+      log('dim', `  setx PATH "%PATH%;${dir}"      (then restart your shell)`);
+    } else {
+      log('dim', `  export PATH="${dir}:$PATH"     (add to ~/.bashrc or ~/.zshrc)`);
+    }
+  }
+}
+
 async function setupClaude() {
   section('Claude Code integration');
   if (!claudeDetected()) {
@@ -326,7 +387,8 @@ function printNextSteps(ok) {
   console.log(`     ${C.dim}@kimi-orchestrate "@plan-file:plans/add-oauth.yaml"${C.reset}\n`);
 
   console.log(`     ${C.dim}# or from any shell${C.reset}`);
-  console.log(`     ${C.dim}kimi --agent ${KIMABLE_DIR}/kimable.yaml --prompt "your task"${C.reset}\n`);
+  console.log(`     ${C.dim}kimable --prompt "your task"${C.reset}`);
+  console.log(`     ${C.dim}# (shim wraps: kimi --agent-file ${KIMABLE_DIR}/kimable.yaml)${C.reset}\n`);
 
   console.log(`${C.bold}Plugin install${C.reset} (gets you /delegate, /orchestrate, /kimable-mode):`);
   console.log(`     ${C.dim}claude plugin marketplace add github:mikehenken/kimable${C.reset}`);
@@ -349,7 +411,10 @@ function printNextSteps(ok) {
   await installKimiCli();
   await syncRepo();
   const ok = verify();
-  if (ok) await setupClaude();
+  if (ok) {
+    await installShim();
+    await setupClaude();
+  }
   printNextSteps(ok);
 
   process.exit(ok ? 0 : 1);

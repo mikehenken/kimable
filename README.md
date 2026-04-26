@@ -28,6 +28,16 @@ npx github:mikehenken/kimable
 
 Requires `git`, `node`, and the [kimi CLI](https://www.kimi.com/code).
 
+## kimi flag note
+
+The kimi CLI's bare `--agent` flag only accepts the builtin names `default` and `okabe`. Custom agent files are loaded with `--agent-file PATH`. The installer drops a `kimable` shim into `~/.local/bin/` so you don't need to type the long path:
+
+```bash
+kimable -p "your task"          # equals: kimi --agent-file ~/.kimable/kimable.yaml -p "..."
+```
+
+Known issue: `kimi --print` / `--quiet` may hang in non-TTY environments (some CI shells, certain Windows git-bash configurations). Tracked upstream; for now invoke kimi from a real terminal session.
+
 ## Two ways to use it
 
 ```
